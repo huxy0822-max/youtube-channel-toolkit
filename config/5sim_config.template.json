@@ -1,0 +1,13 @@
+{
+  "token": "CHANGE_ME_5SIM_JWT_TOKEN_HERE",
+  "country": "indonesia",
+  "operator": "virtual53",
+  "product": "google",
+  "_comments": {
+    "token": "从 https://5sim.net/zh/settings/security 生成 JWT API Token，复制粘贴整个 eyJhbG... 那一大串",
+    "country": "国家代码，推荐 indonesia（接码成功率相对稳定）",
+    "operator": "运营商。virtual53 可以一个号码接 2 次，其他运营商只能接 1 次",
+    "product": "产品代码。google 即 Google/YouTube 的短信",
+    "usage": "复制此文件为 5sim_config.json，填入真实 token，不要把 5sim_config.json 提交到 git"
+  }
+}

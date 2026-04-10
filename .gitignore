@@ -1,0 +1,28 @@
+# 敏感配置（绝对不要提交！）
+scripts/credentials.py
+scripts/totp_codes.py
+config/5sim_config.json
+config/channels_to_create.py
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# 运行产物
+scripts/screenshots/
+scripts/*_results.json
+*.json
+!config/5sim_config.template.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
