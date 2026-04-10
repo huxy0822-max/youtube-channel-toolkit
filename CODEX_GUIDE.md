@@ -76,18 +76,21 @@ CHANNELS_TO_CREATE: dict[int, str] = {
 
 **容器序号** = 你在浏览器客户端（HubStudio 或 BitBrowser）里看到的编号。
 
-### 3.4 填 5sim 接码 TOKEN：`config/5sim_config.json`
+### 3.4 填 hero-sms 接码 API Key：`config/hero_sms_config.json`
 
 ```json
 {
-  "token": "eyJhbGciOiJSUzUxMiIsInR5cCI6IkpXVCJ9.你的真实token...",
-  "country": "indonesia",
-  "operator": "virtual53",
-  "product": "google"
+  "api_key": "你的 hero-sms API Key",
+  "country": 6,
+  "service": "go",
+  "max_price": 0.03
 }
 ```
 
-TOKEN 从 https://5sim.net/zh/settings/security 生成。
+- `api_key`：从 https://hero-sms.com/ 个人中心获取
+- `country`：6 = 印尼（Indonesia），$0.03/个，库存充足
+- `service`：`go` = Google/YouTube
+- `max_price`：限价 $0.03，不会买到贵的号
 
 ## 第四步：选择浏览器后端
 

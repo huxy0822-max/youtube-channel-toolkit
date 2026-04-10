@@ -2,6 +2,7 @@
 scripts/credentials.py
 scripts/totp_codes.py
 config/5sim_config.json
+config/hero_sms_config.json
 config/channels_to_create.py
 
 # Python
@@ -16,6 +17,7 @@ scripts/screenshots/
 scripts/*_results.json
 *.json
 !config/5sim_config.template.json
+!config/hero_sms_config.template.json
 
 # IDE
 .vscode/

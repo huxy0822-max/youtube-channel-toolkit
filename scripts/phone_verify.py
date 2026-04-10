@@ -2,7 +2,7 @@
 """
 YouTube 频道电话验证（中级验证）自动化
 
-通过 HubStudio 或 BitBrowser 容器 + 5sim.net 接码平台自动完成手机验证。
+通过 HubStudio 或 BitBrowser 容器 + hero-sms.com 接码平台自动完成手机验证。
 
 支持的浏览器后端：
   - HubStudio（默认，API 端口 6873）
@@ -10,12 +10,17 @@ YouTube 频道电话验证（中级验证）自动化
 
 自动适配 macOS / Windows 平台（键盘快捷键等）。
 
+接码平台：hero-sms.com
+  API 文档：https://hero-sms.com/api
+  API Base: https://hero-sms.com/stubs/handler_api.php
+  认证方式：URL 参数 api_key=xxx
+
 工作流程：
   1) 导航 https://www.youtube.com/verify
   2) 检测页面状态：已验证 → 跳过；step 1 → 继续
   3) 选国家 Indonesia
-  4) 调 5sim API 买号 → 填号 → 点 NEXT
-  5) 轮询等验证码 → 填码 → 点 SUBMIT
+  4) 调 hero-sms API 买号 → 填号 → 点 NEXT
+  5) 轮询 getStatusV2 等验证码 → 填码 → 点 SUBMIT
   6) 检查是否 "verified"
 
 用法：
@@ -46,34 +51,37 @@ sys.path.append(str(SCRIPT_DIR))
 
 from utils import create_backend, log, SELECT_ALL_KEY  # noqa: E402
 
-# ============ 5sim 配置读取 ============
+# ============ hero-sms 配置读取 ============
 
-CONFIG_PATH = SCRIPT_DIR.parent / "config" / "5sim_config.json"
+CONFIG_PATH = SCRIPT_DIR.parent / "config" / "hero_sms_config.json"
 
 
-def load_5sim_config() -> dict:
+def load_hero_sms_config() -> dict:
     if not CONFIG_PATH.exists():
         log(
             f"找不到配置文件: {CONFIG_PATH}\n"
-            "请复制 config/5sim_config.template.json 为 config/5sim_config.json "
-            "并填入你的 5sim TOKEN。",
+            "请复制 config/hero_sms_config.template.json 为 config/hero_sms_config.json "
+            "并填入你的 hero-sms API Key。",
             "ERR",
         )
         sys.exit(1)
     return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
 
 
-CONFIG = load_5sim_config()
-TOKEN: str = CONFIG.get("token", "").strip()
-COUNTRY: str = CONFIG.get("country", "indonesia")
-OPERATOR: str = CONFIG.get("operator", "virtual53")
-PRODUCT: str = CONFIG.get("product", "google")
+CONFIG = load_hero_sms_config()
+API_KEY: str = CONFIG.get("api_key", "").strip()
+COUNTRY: int = CONFIG.get("country", 6)  # 6 = Indonesia
+SERVICE: str = CONFIG.get("service", "go")  # go = Google
+MAX_PRICE: float = CONFIG.get("max_price", 0.03)
 
-if not TOKEN or TOKEN.startswith("CHANGE_ME"):
-    log("5sim TOKEN 未配置，请编辑 config/5sim_config.json", "ERR")
+if not API_KEY or API_KEY.startswith("CHANGE_ME"):
+    log("hero-sms API Key 未配置，请编辑 config/hero_sms_config.json", "ERR")
     sys.exit(1)
 
-# ============ 5sim API Session（带重试）============
+# ============ hero-sms API ============
+
+HERO_API_BASE = "https://hero-sms.com/stubs/handler_api.php"
+
 
 def make_session() -> requests.Session:
     session = requests.Session()
@@ -84,51 +92,123 @@ def make_session() -> requests.Session:
         allowed_methods=["GET"],
     )
     session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.headers.update(
-        {
-            "Authorization": f"Bearer {TOKEN}",
-            "Accept": "application/json",
-        }
-    )
     return session
 
 
 SESSION = make_session()
-API_BASE = "https://5sim.net/v1/user"
+
+
+def hero_api(action: str, **params) -> str | dict:
+    """调用 hero-sms API，返回解析后的结果。"""
+    params["action"] = action
+    params["api_key"] = API_KEY
+    try:
+        r = SESSION.get(HERO_API_BASE, params=params, timeout=30)
+        text = r.text.strip()
+        # 尝试解析 JSON
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            return text
+    except Exception as e:
+        log(f"hero-sms API 请求失败: {e}", "ERR")
+        return f"ERROR: {e}"
+
+
+def get_balance() -> str:
+    """获取余额。"""
+    result = hero_api("getBalance")
+    return str(result)
 
 
 def buy_number() -> Optional[dict]:
-    url = f"{API_BASE}/buy/activation/{COUNTRY}/{OPERATOR}/{PRODUCT}"
-    try:
-        r = SESSION.get(url, timeout=30)
-        if r.status_code != 200:
-            log(f"5sim 买号失败: HTTP {r.status_code} {r.text[:200]}", "ERR")
-            return None
-        data = r.json()
-        log(f"5sim 买号成功: {data.get('phone')} (id={data.get('id')})", "OK")
-        return data
-    except Exception as e:
-        log(f"5sim 买号异常: {e}", "ERR")
-        return None
+    """
+    买一个号，返回 {activationId, phoneNumber, ...}。失败返回 None。
 
+    使用 getNumberV2 接口，支持 maxPrice 限价。
+    """
+    result = hero_api(
+        "getNumberV2",
+        service=SERVICE,
+        country=COUNTRY,
+        maxPrice=MAX_PRICE,
+    )
 
-def check_sms(order_id: int) -> Optional[str]:
-    try:
-        r = SESSION.get(f"{API_BASE}/check/{order_id}", timeout=30)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        sms_list = data.get("sms") or []
-        if sms_list:
-            return sms_list[-1].get("code")
-    except Exception as e:
-        log(f"5sim 查码异常: {e}", "WARN")
+    if isinstance(result, dict):
+        activation_id = result.get("activationId")
+        phone = result.get("phoneNumber", "")
+        cost = result.get("activationCost", 0)
+        log(f"hero-sms 买号成功: {phone} (id={activation_id}, cost=${cost})", "OK")
+        return result
+
+    if isinstance(result, str):
+        # 旧格式：ACCESS_NUMBER:activationId:phoneNumber
+        if result.startswith("ACCESS_NUMBER:"):
+            parts = result.split(":")
+            data = {
+                "activationId": int(parts[1]),
+                "phoneNumber": parts[2],
+            }
+            log(f"hero-sms 买号成功: {data['phoneNumber']} (id={data['activationId']})", "OK")
+            return data
+
+        # 错误处理
+        if "NO_NUMBERS" in result:
+            log(f"hero-sms 无可用号码 (country={COUNTRY}, service={SERVICE})", "ERR")
+        elif "NO_BALANCE" in result:
+            log(f"hero-sms 余额不足", "ERR")
+        elif "MAX_PRICE" in result:
+            log(f"hero-sms 价格超出限制 maxPrice={MAX_PRICE}", "ERR")
+        else:
+            log(f"hero-sms 买号失败: {result}", "ERR")
+
     return None
 
 
-def cancel_order(order_id: int) -> None:
+def check_sms(activation_id: int) -> Optional[str]:
+    """
+    查询验证码。
+
+    getStatusV2 返回 JSON:
+      - 等待中: 无 sms 字段 或 sms 为空
+      - 收到码: {sms: {code: "123456", ...}}
+
+    getStatus 返回文本:
+      - STATUS_WAIT_CODE: 等待中
+      - STATUS_OK:123456: 收到码
+    """
+    # 优先用 V2
+    result = hero_api("getStatusV2", id=activation_id)
+
+    if isinstance(result, dict):
+        sms = result.get("sms")
+        if sms and isinstance(sms, dict):
+            code = sms.get("code")
+            if code:
+                return str(code)
+        return None
+
+    # 降级到 getStatus
+    result = hero_api("getStatus", id=activation_id)
+    if isinstance(result, str):
+        if result.startswith("STATUS_OK:"):
+            return result.split(":", 1)[1]
+
+    return None
+
+
+def cancel_order(activation_id: int) -> None:
+    """取消订单。status=8 表示取消。"""
     try:
-        SESSION.get(f"{API_BASE}/cancel/{order_id}", timeout=30)
+        hero_api("setStatus", id=activation_id, status=8)
+    except Exception:
+        pass
+
+
+def confirm_sms_received(activation_id: int) -> None:
+    """确认收到验证码。status=6 表示确认完成。"""
+    try:
+        hero_api("setStatus", id=activation_id, status=6)
     except Exception:
         pass
 
@@ -192,7 +272,7 @@ async def select_country_indonesia(page) -> bool:
             INDONESIA_NAMES,
         )
         if found:
-            log(f"  已选择 Indonesia", "OK")
+            log("  已选择 Indonesia", "OK")
             await human_delay(1000, 1500)
             return True
         log("  未找到 Indonesia 选项", "ERR")
@@ -297,38 +377,40 @@ async def verify_phone(container: int, max_tries: int, backend) -> dict:
 
                 order = buy_number()
                 if not order:
-                    raise Exception("5sim 买号失败")
-                order_id = int(order["id"])
-                phone = str(order["phone"])
+                    raise Exception("hero-sms 买号失败")
+                activation_id = int(order["activationId"])
+                phone = str(order["phoneNumber"])
                 result["phone"] = phone
 
                 if not await fill_phone(page, phone):
-                    cancel_order(order_id)
+                    cancel_order(activation_id)
                     continue
 
                 if not await click_button(page, NEXT_BUTTON_TEXTS):
-                    cancel_order(order_id)
+                    cancel_order(activation_id)
                     raise Exception("找不到 NEXT 按钮")
                 await human_delay(3000, 5000)
 
                 body = await page.inner_text("body")
                 if any(kw in body for kw in TOO_MANY_ACCOUNTS):
                     log(f"  [{container}] 号码已被其他账号用满，换下一个", "WARN")
-                    cancel_order(order_id)
+                    cancel_order(activation_id)
                     await human_delay(1500, 2500)
                     continue
 
-                # 轮询等验证码
+                # 轮询等验证码（每 4 秒，最多 60 秒）
                 code = None
-                for _ in range(8):
+                for poll_round in range(15):
                     await asyncio.sleep(4)
-                    code = check_sms(order_id)
+                    code = check_sms(activation_id)
                     if code:
                         break
+                    if poll_round % 3 == 2:
+                        log(f"  [{container}] 等待验证码... ({(poll_round+1)*4}s)", "WAIT")
 
                 if not code:
-                    log(f"  [{container}] 30s 内没收到码，取消换号", "WARN")
-                    cancel_order(order_id)
+                    log(f"  [{container}] 60s 内没收到码，取消换号", "WARN")
+                    cancel_order(activation_id)
                     continue
 
                 log(f"  [{container}] 收到验证码: {code}", "OK")
@@ -344,13 +426,14 @@ async def verify_phone(container: int, max_tries: int, backend) -> dict:
                     await click_button(page, SUBMIT_BUTTON_TEXTS)
                 except Exception as e:
                     log(f"  [{container}] 填码失败: {e}", "ERR")
-                    cancel_order(order_id)
+                    cancel_order(activation_id)
                     continue
 
                 await human_delay(5000, 8000)
 
                 # 检查是否验证成功
                 if await is_already_verified(page):
+                    confirm_sms_received(activation_id)
                     result["status"] = "success"
                     log(f"  [{container}] ✅ 验证成功", "OK")
                     return result
@@ -358,9 +441,10 @@ async def verify_phone(container: int, max_tries: int, backend) -> dict:
                 body = await page.inner_text("body")
                 if "Incorrect" in body or "錯誤" in body:
                     log(f"  [{container}] 验证码错误/过期", "WARN")
-                    cancel_order(order_id)
+                    cancel_order(activation_id)
                     continue
 
+                confirm_sms_received(activation_id)
                 result["status"] = "success"
                 log(f"  [{container}] ✅ 验证可能成功", "OK")
                 return result
@@ -381,7 +465,7 @@ def parse_list(raw: Optional[str]) -> list[int]:
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="YouTube 频道电话验证（5sim 接码）")
+    parser = argparse.ArgumentParser(description="YouTube 频道电话验证（hero-sms 接码）")
     parser.add_argument("--container", type=int, help="单个容器号")
     parser.add_argument("--containers", type=str, help="容器列表，逗号分隔")
     parser.add_argument(
@@ -408,10 +492,14 @@ async def main():
 
     backend = create_backend(args.browser)
 
+    # 显示余额
+    balance = get_balance()
+    log(f"hero-sms 余额: {balance}", "INFO")
+
     log(f"浏览器后端: {backend.name}", "INFO")
     log(f"运行平台: {'macOS' if sys.platform == 'darwin' else 'Windows' if sys.platform == 'win32' else sys.platform}", "INFO")
     log(f"待验证容器: {containers}", "INFO")
-    log(f"5sim 运营商: {COUNTRY}/{OPERATOR}/{PRODUCT}", "INFO")
+    log(f"接码配置: country={COUNTRY}, service={SERVICE}, maxPrice=${MAX_PRICE}", "INFO")
     log(f"每个容器最多 {args.max_tries} 个号码", "INFO")
 
     results = []

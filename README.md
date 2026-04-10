@@ -36,7 +36,7 @@
 - **Python 3.10+**
 - **Playwright** — 页面自动化
 - **pyotp** — 生成 Google 两步验证码
-- **5sim.net 账号**（仅 phone_verify 需要） — 接码平台
+- **hero-sms.com 账号**（仅 phone_verify 需要） — 接码平台
 
 ## 快速上手
 
@@ -68,10 +68,10 @@ playwright install chromium   # 下载 Playwright 需要的 Chromium 二进制
 3. **填频道清单**（只新建时需要）—— 编辑 `config/channels_to_create.py`：
    - 把 `CHANNELS_TO_CREATE` 字典填成你要建的容器号 → 频道名
 
-4. **填 5sim token**（只电话验证时需要）—— 复制并编辑配置：
+4. **填 hero-sms API Key**（只电话验证时需要）—— 复制并编辑配置：
    ```bash
-   cp config/5sim_config.template.json config/5sim_config.json
-   # 编辑 5sim_config.json 填入你的 JWT token
+   cp config/hero_sms_config.template.json config/hero_sms_config.json
+   # 编辑 hero_sms_config.json 填入你的 API Key
    ```
 
 ### 第三步：确认浏览器客户端已就绪
@@ -162,8 +162,8 @@ SKIP_CONTAINERS: set[int] = set()  # 其他原因跳过的容器号
 
 ### 电话验证
 
-- **5sim virtual53 成功率只有 40% 左右**，连续失败是正常的，不是 bug
-- 一个号码只能接 2 次（virtual53 特性），其他运营商只能接 1 次
+- **hero-sms 接码成功率因运营商而异**，连续失败是正常的，不是 bug
+- 默认配置用印尼 (country=6) + Google (service=go)，$0.03/个
 - **不要在同一个容器上连续试多个号** —— 会触发 YouTube "too many attempts" 限频 → 等一周才能再试
 - YouTube verify 页的按钮是 `tp-yt-paper-button`（不是标准 `<button>`）
 
@@ -206,7 +206,8 @@ youtube-channel-toolkit/
 │   └── phone_verify.py                # 电话验证主脚本
 └── config/
     ├── channels_to_create.py          # 频道列表（改成你自己的）
-    └── 5sim_config.template.json      # 5sim 配置模板（复制为 5sim_config.json）
+    ├── 5sim_config.template.json      # 5sim 配置模板（旧版备用）
+    └── hero_sms_config.template.json  # hero-sms 配置模板（复制为 hero_sms_config.json）
 ```
 
 ## 不提供保证

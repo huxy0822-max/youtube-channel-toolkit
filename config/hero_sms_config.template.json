@@ -1,0 +1,13 @@
+{
+  "api_key": "CHANGE_ME_HERO_SMS_API_KEY",
+  "country": 6,
+  "service": "go",
+  "max_price": 0.03,
+  "_comments": {
+    "api_key": "从 https://hero-sms.com/ 个人中心获取 API Key",
+    "country": "国家 ID。6 = Indonesia（印尼），推荐用印尼，便宜且库存多",
+    "service": "服务代码。go = Google/YouTube",
+    "max_price": "单次接码最高价格（美元）。0.03 = 印尼 Google 的最低价",
+    "usage": "复制此文件为 hero_sms_config.json，填入真实 API Key"
+  }
+}
