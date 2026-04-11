@@ -3,6 +3,7 @@ scripts/credentials.py
 scripts/totp_codes.py
 config/5sim_config.json
 config/hero_sms_config.json
+config/accounts.py
 config/channels_to_create.py
 
 # Python

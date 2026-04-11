@@ -2,15 +2,16 @@
 
 ## 这是什么
 
-三个独立 Python 脚本，用来自动化管理 YouTube 频道的"重生"流程：
+四个 Python 脚本，用来自动化管理 YouTube 频道：
 
 | 脚本 | 干什么 | 什么时候用 |
 |------|--------|-----------|
+| **`bootstrap.py`** | **从零起号一条龙** | **新账号：登录→改密码→建频道→手机验证** |
 | `delete_channel.py` | 删除已有频道 | 旧频道数据不好，想清空重来 |
 | `create_channel.py` | 新建空频道 | 删完之后或开新容器时 |
 | `phone_verify.py` | 手机验证（接码） | 新频道首次发视频前必须通过 |
 
-三个脚本都通过 **Chrome DevTools Protocol (CDP)** 连接到已经登录 Google 账号的 Chrome 实例，用 **Playwright** 驱动页面点击。
+所有脚本都通过 **Chrome DevTools Protocol (CDP)** 连接到已经登录 Google 账号的 Chrome 实例，用 **Playwright** 驱动页面点击。
 
 ## 支持的浏览器后端
 
@@ -84,7 +85,19 @@ playwright install chromium   # 下载 Playwright 需要的 Chromium 二进制
 1. BitBrowser 客户端打开，确认本地 API 监听在 `http://127.0.0.1:54345`
 2. 每个要操作的窗口配置文件里，确认 Google 账号**已经手动登录过**一次
 
-（脚本不处理首次登录 reCAPTCHA）
+（delete/create/phone_verify 脚本不处理首次登录 reCAPTCHA，但 **bootstrap.py 可以从零登录**）
+
+5. **填账号清单**（从零起号用 bootstrap.py）—— 复制 `config/accounts.template.py` 为 `config/accounts.py`：
+   ```python
+   ACCOUNTS: dict[int, dict] = {
+       1: {
+           "email": "xxx@gmail.com",
+           "password": "当前密码",
+           "totp_secret": "TOTP_BASE32_SECRET",
+           "channel_name": "频道名",
+       },
+   }
+   ```
 
 ### 第四步：跑脚本
 
@@ -108,9 +121,24 @@ python3 scripts/create_channel.py --browser bitbrowser --dry-run
 python3 scripts/delete_channel.py --containers 10,28 --browser bitbrowser
 python3 scripts/create_channel.py --containers 10,28 --browser bitbrowser
 python3 scripts/phone_verify.py --containers 10,28 --max-tries 3 --browser bitbrowser
+
+# ========== 从零起号一条龙（bootstrap.py）==========
+
+# 先 dry-run 看计划
+python3 scripts/bootstrap.py --containers 1,2,3 --dry-run
+python3 scripts/bootstrap.py --containers 1,2,3 --browser bitbrowser --dry-run
+
+# 真的跑（全流程：登录→改密码→建频道→验证）
+python3 scripts/bootstrap.py --containers 1,2,3
+
+# 跳过某些步骤
+python3 scripts/bootstrap.py --containers 1 --skip-login         # 已登录过
+python3 scripts/bootstrap.py --containers 1 --skip-password      # 不改密码
+python3 scripts/bootstrap.py --containers 1 --skip-channel       # 不建频道
+python3 scripts/bootstrap.py --containers 1 --skip-verify        # 不做验证
 ```
 
-## 三个脚本的典型工作流
+## 脚本工作流
 
 ```
 ┌──────────────┐
